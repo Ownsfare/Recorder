@@ -10,13 +10,14 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import com.chibde.visualizer.LineBarVisualizer
 import com.hk.recorder.databinding.ActivityMainBinding
 import java.io.File
-
 import java.io.IOException
-
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
@@ -24,6 +25,12 @@ class MainActivity : AppCompatActivity() {
     private var player: MediaPlayer? = null
     private var permissionToRecordAccepted = false
     private lateinit var fileName: String
+    private lateinit var lineBarVisualizer: LineBarVisualizer
+    private lateinit var visualizerView: VisualizerView
+
+    private lateinit var handler: Handler
+    public val REPEAT_INTERVAL = 60     //40
+    private var isRecording = false
     private var permissions: Array<String> =
         arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.WRITE_EXTERNAL_STORAGE)
 
@@ -31,9 +38,13 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        binding.playBtn.isEnabled = true
+
+        visualizerView = findViewById(R.id.visualizerLineBar1)
 
         ActivityCompat.requestPermissions(this, permissions, 200)
 
+        handler = Handler()
 //        fileName = Environment.getExternalStorageDirectory().toString() + "/test1.3gp"
         fileName = Environment.getExternalStorageDirectory().absolutePath
         fileName += "/test1.3gp"
@@ -45,26 +56,31 @@ class MainActivity : AppCompatActivity() {
             stopRec()
         }
         binding.playBtn.setOnClickListener {
+            lineBarVisualization2(it)
             play()
+            binding.playBtn.isEnabled = false
         }
 
 
     }
 
     private fun stopRec() {
-//        recorder?.start()
-//        Toast.makeText(this@MainActivity, "Recording started", Toast.LENGTH_SHORT).show()
 
 //        recorder?.stop()
 //        recorder?.release()
-//        try {
-//
-//            Log.d("MediaRecorder", recorder.toString())
-//            Log.d("MediaRecorder", recorder.toString())
-//        } catch (e: IOException) {
-//            Log.e(Companion.LOG_TAG, "prepare() failed")
-//        }
+        try {
+            isRecording = false // stop recording
+            handler.removeCallbacks(updateVisualizer)
+            visualizerView.clear()
+            recorder?.stop()
+            recorder?.release()
+
+        } catch (e: IOException) {
+            Log.e(Companion.LOG_TAG , "prepare() failed")
+        }
+
         recorder = null
+        Toast.makeText(this@MainActivity, "Recording stopped", Toast.LENGTH_SHORT).show()
     }
 
 
@@ -82,14 +98,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         recorder?.start()
+        isRecording = true
+        handler.post(updateVisualizer)
         Toast.makeText(this@MainActivity, "Recording started", Toast.LENGTH_SHORT).show()
-        Handler().postDelayed(
-            {
-                recorder?.stop()
-                recorder?.release()
-            }, 5000
-        )
-        Log.d("MediaRecorder", recorder.toString())
     }
 
     private fun play() {
@@ -102,6 +113,7 @@ class MainActivity : AppCompatActivity() {
                 Log.e(LOG_TAG, "prepare() failed")
             }
         }
+        lineBarVisualizer.setPlayer(player!!.audioSessionId)
     }
 
     companion object {
@@ -129,5 +141,38 @@ class MainActivity : AppCompatActivity() {
 
         Log.d("MediaPath", file?.path.toString())
         return file!!.path
+    }
+
+    public fun lineBarVisualization2(view: View){
+        lineBarVisualizer = findViewById(R.id.visualizerLineBar2)
+        lineBarVisualizer.visibility = View.VISIBLE
+        lineBarVisualizer.setColor(ContextCompat.getColor(this,R.color.myColor6))
+        lineBarVisualizer.setDensity(60F)
+//        lineBarVisualizer.setPlayer(player!!.audioSessionId)
+
+
+    }
+//    public fun lineBarVisualization1(view: View){
+//        lineBarVisualizer = findViewById(R.id.visualizerLineBar1)
+//        lineBarVisualizer.visibility = View.VISIBLE
+//        lineBarVisualizer.setColor(ContextCompat.getColor(this,R.color.myColor6))
+//        lineBarVisualizer.setDensity(60F)
+//        lineBarVisualizer.setPlayer(player!!.audioSessionId)
+//
+//    }
+
+    var updateVisualizer: Runnable = object : Runnable {
+        override fun run() {
+            if (isRecording) // if we are already recording
+            {
+                // get the current amplitude
+                val x = recorder!!.maxAmplitude
+                visualizerView.addAmplitude(x.toFloat()) // update the VisualizeView
+                visualizerView.invalidate() // refresh the VisualizerView
+
+                // update in 40 milliseconds
+                handler.postDelayed(this, REPEAT_INTERVAL.toLong())
+            }
+        }
     }
 }
